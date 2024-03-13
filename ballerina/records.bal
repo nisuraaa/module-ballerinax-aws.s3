@@ -124,3 +124,13 @@ public type ObjectCreationHeaders record {
     @display {label: "Expiry Time"}
     string expires?;
 };
+
+
+# Array of CompletedPart records
+#
+# + partNumber - The part number of the completed part
+# + ETag - The entity tag returned when the part was uploaded
+public type CompletedParts record {|
+    int PartNumber;
+    string ETag;
+|};

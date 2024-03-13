@@ -56,6 +56,7 @@ const string AUTHORIZATION= "Authorization";
 const string GET = "GET";
 const string PUT = "PUT";
 const string DELETE = "DELETE";
+const string POST = "POST";
 const string TRUE = "TRUE";
 const string FALSE = "FALSE";
 const string HTTPS = "https://";
