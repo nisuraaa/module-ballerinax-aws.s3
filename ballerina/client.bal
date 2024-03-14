@@ -263,9 +263,9 @@ public isolated client class Client {
     # + bucketName - The name of the bucket
     # + return - If success, the upload ID, else an error
     remote isolated function createMultipartUpload(
-            @display {label: "Object Name"} string objectName, 
+            @display {label: "Object Name"} string objectName,
             @display {label: "Bucket Name"} string bucketName
-        ) returns @tainted error|string {
+            ) returns @tainted error|string {
         map<string> queryParamsMap = {};
         string queryParamStr = "";
         http:Request request = new;
@@ -275,33 +275,32 @@ public isolated client class Client {
         queryParamsMap["uploads"] = "";
         map<string> requestHeaders = setDefaultHeaders(self.amazonHost);
 
-        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, POST, requestURI,UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);        
+        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, POST, requestURI, UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);
         requestURI = string `${requestURI}${queryParamStr}`;
-        http:Response response = check self.amazonS3->post(requestURI, request);
+        http:Response httpResponse = check self.amazonS3->post(requestURI, request);
 
-        xml XMLPayload = check response.getXmlPayload();
-        if response.statusCode == http:STATUS_OK {
-            json jsonPayload = check response.getJsonPayload();
-            string uploadId = check jsonPayload.InitiateMultipartUploadResult.UploadId;
-            return uploadId;
+        xml XMLPayload = check httpResponse.getXmlPayload();
+        if httpResponse.statusCode == http:STATUS_OK {
+            return getUploadId(XMLPayload);
         } else {
             return error(XMLPayload.toString());
         }
     }
+
     # Completes a multipart upload by assembling previously uploaded parts.
     #
     # + objectName - The name of the object  
     # + bucketName - The name of the bucket
     # + uploadId - The upload ID of the multipart upload  
     # + parts - An array of parts including part number and ETag
-    # + return - If success, the response of the completeMultipartUpload, else an error
+    # + return - An error on failure or else `()`
     remote isolated function completeMultipartUpload(
             @display {label: "Object Name"} string objectName,
             @display {label: "Bucket Name"} string bucketName,
             @display {label: "Upload ID"} string uploadId,
-            @display {label: "Array of Parts"} CompletedParts[] parts
-        ) returns @tainted json|error {
-        
+            @display {label: "Array of Parts"} S3Part[] parts
+            ) returns @tainted error? {
+
         map<string> queryParamsMap = {};
         string queryParamStr = "";
         http:Request request = new;
@@ -311,43 +310,63 @@ public isolated client class Client {
         queryParamsMap["uploadId"] = uploadId;
         map<string> requestHeaders = setDefaultHeaders(self.amazonHost);
 
-        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, POST, requestURI,UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);        
+        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, POST, requestURI, UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);
         requestURI = string `${requestURI}${queryParamStr}`;
-        
+
         string payload = string `<CompleteMultipartUpload xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`;
         foreach var part in parts {
-            payload =  string `${payload}<Part><PartNumber>${part.PartNumber.toString()}</PartNumber><ETag>${part.ETag}</ETag></Part>`;
+            payload = string `${payload}<Part><PartNumber>${part.PartNumber.toString()}</PartNumber><ETag>${part.ETag}</ETag></Part>`;
         }
         payload = string `${payload}</CompleteMultipartUpload>`;
         request.setPayload(payload);
-        
-        http:Response response = check self.amazonS3->post(requestURI, request);
-        xml XMLPayload = check response.getXmlPayload();
-        if response.statusCode == http:STATUS_OK {
-            return response.getJsonPayload();
-        } else {
-            return error(XMLPayload.toString());
-        }
-    
-    
-    
+
+        http:Response httpResponse = check self.amazonS3->post(requestURI, request);
+        return handleHttpResponse(httpResponse);
     }
-    # Uploads a part in a multipart upload.
+    # Aborts a multipart upload.
     #
-    # + objectName - parameter description  
-    # + bucketName - parameter description  
-    # + payload - parameter description  
-    # + uploadId - parameter description  
-    # + partNumber - parameter description
-    # + return - return value description
+    # + objectName - The name of the object
+    # + bucketName - The name of the bucket 
+    # + uploadId - The upload ID of the multipart upload
+    # + return - An error on failure or else `()`
+    remote isolated function abortMultipartUpload(
+            @display {label: "Object Name"} string objectName,
+            @display {label: "Bucket Name"} string bucketName,
+            @display {label: "Upload ID"} string uploadId            
+            ) returns @tainted error? {
+
+        map<string> queryParamsMap = {};
+        string queryParamStr = "";
+        http:Request request = new;
+
+        string requestURI = string `/${bucketName}/${objectName}`;
+        queryParamStr = string `${queryParamStr}?uploadId=${uploadId}`;
+        queryParamsMap["uploadId"] = uploadId;
+        map<string> requestHeaders = setDefaultHeaders(self.amazonHost);
+
+        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, DELETE, requestURI, UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);
+        requestURI = string `${requestURI}${queryParamStr}`;
+
+        http:Response httpResponse = check self.amazonS3->delete(requestURI, request);
+        return handleHttpResponse(httpResponse);
+    }
+
+    # Uploads a part of a file in a multipart upload.
+    #
+    # + objectName - The name of the object
+    # + bucketName - The name of the bucket 
+    # + payload - The file content that needed to be added to the bucket
+    # + uploadId - The upload ID of the multipart upload
+    # + partNumber - The part number of the part to be uploaded
+    # + return - If success, the part number and ETag, else an error
     remote isolated function UploadPart(
             @display {label: "Object Name"} string objectName,
             @display {label: "Bucket Name"} string bucketName,
             @display {label: "File Content"} string|xml|json|byte[]|stream<io:Block, io:Error?> payload,
             @display {label: "Upload ID"} string uploadId,
             @display {label: "Part Number"} int partNumber
-        ) returns @tainted json|error {
-        
+            ) returns @tainted S3Part|error {
+
         map<string> queryParamsMap = {};
         string queryParamStr = "";
         http:Request request = new;
@@ -358,7 +377,7 @@ public isolated client class Client {
             "partNumber": partNumber.toString(),
             "uploadId": uploadId
         };
-        
+
         map<string> requestHeaders = setDefaultHeaders(self.amazonHost);
 
         if payload is byte[] {
@@ -369,15 +388,15 @@ public isolated client class Client {
             request.setPayload(payload);
         }
 
-        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, PUT, requestURI,UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);        
+        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, PUT, requestURI, UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);
         requestURI = string `${requestURI}${queryParamStr}`;
-       
-        
-        http:Response response = check self.amazonS3->post(requestURI, request);
-        xml XMLPayload = check response.getXmlPayload();
-        if response.statusCode == http:STATUS_OK {
-            return response.getJsonPayload();
+
+        http:Response httpResponse = check self.amazonS3->put(requestURI, request);
+        if httpResponse.statusCode == http:STATUS_OK {
+            string ETag = check httpResponse.getHeader("ETag");
+            return {PartNumber: partNumber, ETag: ETag};
         } else {
+            xml XMLPayload = check httpResponse.getXmlPayload();
             return error(XMLPayload.toString());
         }
     }

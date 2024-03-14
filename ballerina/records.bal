@@ -128,9 +128,9 @@ public type ObjectCreationHeaders record {
 
 # Array of CompletedPart records
 #
-# + partNumber - The part number of the completed part
+# + PartNumber - The part number of the completed part
 # + ETag - The entity tag returned when the part was uploaded
-public type CompletedParts record {|
+public type S3Part record {|
     int PartNumber;
     string ETag;
 |};
