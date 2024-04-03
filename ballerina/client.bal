@@ -266,16 +266,25 @@ public isolated client class Client {
             @display {label: "Object Name"} string objectName,
             @display {label: "Bucket Name"} string bucketName
             ) returns @tainted error|string {
-        map<string> queryParamsMap = {};
-        string queryParamStr = "";
+
+        if objectName == EMPTY_STRING {
+            return error("OBJECT_NAME_EMPTY_ERROR_MSG");
+        }
+        if bucketName == EMPTY_STRING {
+            return error("BUCKET_NAME_EMPTY_ERROR_MSG");
+        }
+
+        map<string> queryParamsMap = {
+            "uploads": EMPTY_STRING
+        };
         http:Request request = new;
 
         string requestURI = string `/${bucketName}/${objectName}`;
-        queryParamStr = string `${queryParamStr}?uploads`;
-        queryParamsMap["uploads"] = "";
+        string queryParamStr = string `?uploads`;
         map<string> requestHeaders = setDefaultHeaders(self.amazonHost);
 
-        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, POST, requestURI, UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);
+        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, POST, requestURI, UNSIGNED_PAYLOAD,
+            requestHeaders, request, queryParams = queryParamsMap);
         requestURI = string `${requestURI}${queryParamStr}`;
         http:Response httpResponse = check self.amazonS3->post(requestURI, request);
 
@@ -292,7 +301,7 @@ public isolated client class Client {
     # + objectName - The name of the object  
     # + bucketName - The name of the bucket
     # + uploadId - The upload ID of the multipart upload  
-    # + parts - An array of parts including part number and ETag
+    # + parts - An array containing the part number and ETag of each part
     # + return - An error on failure or else `()`
     remote isolated function completeMultipartUpload(
             @display {label: "Object Name"} string objectName,
@@ -310,7 +319,8 @@ public isolated client class Client {
         queryParamsMap["uploadId"] = uploadId;
         map<string> requestHeaders = setDefaultHeaders(self.amazonHost);
 
-        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, POST, requestURI, UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);
+        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, POST, requestURI, 
+            UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);
         requestURI = string `${requestURI}${queryParamStr}`;
 
         string payload = string `<CompleteMultipartUpload xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`;
@@ -335,16 +345,18 @@ public isolated client class Client {
             @display {label: "Upload ID"} string uploadId            
             ) returns @tainted error? {
 
-        map<string> queryParamsMap = {};
-        string queryParamStr = "";
+        map<string> queryParamsMap = {
+            "uploadId": uploadId
+        };
+
+        string queryParamStr = string `?uploadId=${uploadId}`;
         http:Request request = new;
 
         string requestURI = string `/${bucketName}/${objectName}`;
-        queryParamStr = string `${queryParamStr}?uploadId=${uploadId}`;
-        queryParamsMap["uploadId"] = uploadId;
         map<string> requestHeaders = setDefaultHeaders(self.amazonHost);
 
-        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, DELETE, requestURI, UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);
+        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, DELETE, requestURI, 
+            UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);
         requestURI = string `${requestURI}${queryParamStr}`;
 
         http:Response httpResponse = check self.amazonS3->delete(requestURI, request);
@@ -357,7 +369,7 @@ public isolated client class Client {
     # + bucketName - The name of the bucket 
     # + payload - The file content that needed to be added to the bucket
     # + uploadId - The upload ID of the multipart upload
-    # + partNumber - The part number of the part to be uploaded
+    # + partNumber - The part number of the file part to be uploaded
     # + return - If success, the part number and ETag, else an error
     remote isolated function UploadPart(
             @display {label: "Object Name"} string objectName,
@@ -367,13 +379,12 @@ public isolated client class Client {
             @display {label: "Part Number"} int partNumber
             ) returns @tainted S3Part|error {
 
-        map<string> queryParamsMap = {};
-        string queryParamStr = "";
         http:Request request = new;
 
         string requestURI = string `/${bucketName}/${objectName}`;
-        queryParamStr = string `${queryParamStr}?partNumber=${partNumber}&uploadId=${uploadId}`;
-        queryParamsMap = {
+        string queryParamStr = string `?partNumber=${partNumber}&uploadId=${uploadId}`;
+        
+        map<string> queryParamsMap = {
             "partNumber": partNumber.toString(),
             "uploadId": uploadId
         };
@@ -388,7 +399,8 @@ public isolated client class Client {
             request.setPayload(payload);
         }
 
-        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, PUT, requestURI, UNSIGNED_PAYLOAD, requestHeaders, request, queryParams = queryParamsMap);
+        check generateSignature(self.accessKeyId, self.secretAccessKey, self.region, PUT, requestURI, UNSIGNED_PAYLOAD,
+            requestHeaders, request, queryParams = queryParamsMap);
         requestURI = string `${requestURI}${queryParamStr}`;
 
         http:Response httpResponse = check self.amazonS3->put(requestURI, request);
